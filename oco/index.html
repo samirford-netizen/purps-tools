@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>OCO Exit Planner</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0D1016">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OCO Exits">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: inputs column (contract, rules, levels) beside an output column (scoreboard, contract fit, ticket, level map). Stacks on phones. */
+:root{
+  --bg:#EDEFF4; --surface:#FFFFFF; --ink:#141922; --muted:#5A6375; --line:#D5D9E3;
+  --accent:#6337CF; --accent-soft:#EDE6FC;
+  --gain:#0F7A49; --gain-soft:#DDF2E6; --loss:#BE3328; --loss-soft:#FBE2DE; --warn:#9A6200; --warn-soft:#FFF0D2;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0D1016; --surface:#151A23; --ink:#E6E9F0; --muted:#8C95A7; --line:#262D3A;
+  --accent:#A88BFF; --accent-soft:#251D3D;
+  --gain:#3FD68E; --gain-soft:#0F2A1E; --loss:#FF6E61; --loss-soft:#33171A; --warn:#F1B84C; --warn-soft:#2D2310;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0D1016; --surface:#151A23; --ink:#E6E9F0; --muted:#8C95A7; --line:#262D3A;
+  --accent:#A88BFF; --accent-soft:#251D3D;
+  --gain:#3FD68E; --gain-soft:#0F2A1E; --loss:#FF6E61; --loss-soft:#33171A; --warn:#F1B84C; --warn-soft:#2D2310;
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 20px}
+.eyebrow{font:500 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+h1{font:700 40px/1 var(--display);letter-spacing:.01em;margin:6px 0 0;text-wrap:balance}
+.lede{color:var(--muted);margin:6px 0 0;max-width:62ch}
+.head-actions{display:flex;gap:8px;flex-wrap:wrap}
+button{font:500 13px/1 var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:9px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.main{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}
+@media (min-width:940px){.main{grid-template-columns:minmax(0,390px) minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.card h2{font:700 20px/1 var(--display);letter-spacing:.03em;text-transform:uppercase;margin:0;display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.card h2 small{font:400 12px/1.3 var(--body);text-transform:none;letter-spacing:0;color:var(--muted)}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+label{display:flex;flex-direction:column;gap:4px;font:500 11px/1.2 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);min-width:0}
+input,select{font:500 15px/1.2 var(--mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%;min-width:0;font-variant-numeric:tabular-nums}
+input:focus,select:focus{border-color:var(--accent);outline:none}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:var(--bg);font:600 13px/1 var(--mono);padding:10px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+.meta{display:flex;flex-wrap:wrap;gap:6px 14px;font:400 12px/1.4 var(--mono);color:var(--muted)}
+.meta b{color:var(--ink);font-weight:500}
+.note{font-size:13px;color:var(--muted);margin:0}
+.chip{display:inline-flex;align-items:center;gap:6px;font:500 11px/1 var(--mono);letter-spacing:.04em;padding:5px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.ok{background:var(--gain-soft);color:var(--gain)}
+.chip.bad{background:var(--loss-soft);color:var(--loss)}
+
+/* scoreboard */
+.board{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+@media (min-width:640px){.board{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.cell{background:var(--surface);padding:14px 14px 12px;display:flex;flex-direction:column;gap:4px;min-width:0;border-top:3px solid transparent}
+.cell.stop{border-top-color:var(--loss)} .cell.act{border-top-color:var(--accent)} .cell.trail{border-top-color:var(--muted)} .cell.floor{border-top-color:var(--gain)}
+.cell .k{font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.cell .v{font:700 38px/1 var(--display);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.cell .s{font:400 12px/1.35 var(--mono);color:var(--muted)}
+.cell .s b{color:var(--ink);font-weight:500}
+.status{display:flex;flex-wrap:wrap;gap:8px}
+.alerts{display:flex;flex-direction:column;gap:8px}
+.alert{border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.45}
+.alert.warn{background:var(--warn-soft);color:var(--ink);border-left:3px solid var(--warn)}
+.alert.bad{background:var(--loss-soft);color:var(--ink);border-left:3px solid var(--loss)}
+.alert.info{background:var(--accent-soft);color:var(--ink);border-left:3px solid var(--accent)}
+.money{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.money div{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--line);border-radius:8px}
+.money span{font:500 11px/1.2 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.money strong{font:600 18px/1.2 var(--mono);font-variant-numeric:tabular-nums}
+.pos{color:var(--gain)} .neg{color:var(--loss)}
+
+/* contract fit */
+.fitgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.fit{display:flex;flex-direction:column;gap:5px;padding:12px;border:1px solid var(--line);border-radius:8px;min-width:0}
+.fit .k{font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.fit .v{font:700 32px/1 var(--display);font-variant-numeric:tabular-nums}
+.fit .s{font:400 12px/1.4 var(--mono);color:var(--muted)}
+.fit .s b{color:var(--ink);font-weight:500}
+.fit .chip{align-self:flex-start}
+.verdict{font-size:14px;margin:0;max-width:70ch}
+.verdict b{font-weight:600}
+td.ok{background:var(--gain-soft);color:var(--gain);font-weight:600}
+td.warnc{background:var(--warn-soft);color:var(--warn);font-weight:600}
+td.badc{background:var(--loss-soft);color:var(--loss);font-weight:600}
+
+/* ticket */
+.ticket{display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.leg{display:grid;grid-template-columns:34px minmax(0,1fr);gap:0;border-top:1px solid var(--line)}
+.leg:first-child{border-top:0}
+.leg .n{font:700 22px/1 var(--display);display:flex;align-items:flex-start;justify-content:center;padding-top:12px;background:var(--bg);color:var(--muted)}
+.leg .b{padding:10px 12px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.leg .t{font:600 12px/1.2 var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.leg.l-stop .t{color:var(--loss)} .leg.l-act .t{color:var(--accent)} .leg.l-pt .t{color:var(--gain)}
+.leg code{font:500 14px/1.45 var(--mono);color:var(--ink);overflow-wrap:anywhere}
+.leg .h{font-size:12px;color:var(--muted)}
+.grouphead{font:500 12px/1.4 var(--mono);color:var(--muted);padding:10px 12px;background:var(--bg);border-bottom:1px solid var(--line)}
+.copyrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.copied{font:500 12px/1 var(--mono);color:var(--gain)}
+
+/* levels */
+.lvl-list{display:flex;flex-direction:column;gap:8px}
+.lvl{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) 36px;gap:8px;align-items:center}
+.lvl button{padding:9px 0;color:var(--muted)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font:500 13px/1.2 var(--mono);font-variant-numeric:tabular-nums}
+th,td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{font:500 11px/1.2 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:var(--bg);position:sticky;top:0}
+th small{display:block;text-transform:none;letter-spacing:0;font-weight:400;margin-top:2px}
+td.lab,th.lab{text-align:left;position:sticky;left:0;background:var(--surface);z-index:1}
+th.lab{background:var(--bg);z-index:2}
+td.lab{font-family:var(--body);font-weight:500;max-width:170px;overflow:hidden;text-overflow:ellipsis}
+td.spot{color:var(--muted)}
+tr.now td{background:var(--accent-soft)} tr.now td.lab{background:var(--accent-soft);color:var(--accent)}
+td.up{color:var(--gain)} td.down{color:var(--loss)}
+tr.line-stop td{border-top:2px dashed var(--loss);border-bottom:2px dashed var(--loss)}
+tr.line-stop td.lab,tr.line-stop td.spot{color:var(--loss);font-weight:600}
+tr.line-act td{border-top:2px dashed var(--accent);border-bottom:2px dashed var(--accent)}
+tr.line-act td.lab,tr.line-act td.spot{color:var(--accent);font-weight:600}
+tr.line-floor td{border-top:2px dashed var(--gain);border-bottom:2px dashed var(--gain)}
+tr.line-floor td.lab,tr.line-floor td.spot{color:var(--gain);font-weight:600}
+td.hit-act{background:var(--accent-soft);color:var(--accent);font-weight:600}
+td.hit-stop{background:var(--loss-soft);color:var(--loss);font-weight:600}
+td .p{display:block;font-size:11px;font-weight:400;opacity:.8;margin-top:2px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font:400 12px/1.3 var(--mono);color:var(--muted)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.check{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.check li::marker{font:600 13px var(--mono);color:var(--accent)}
+.check code{font:500 13px var(--mono);background:var(--bg);padding:1px 5px;border-radius:4px}
+.presets{display:flex;flex-direction:column;gap:8px}
+.pset{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;align-items:center}
+.pset>span{font:500 11px/1.2 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.pbtns{display:flex;flex-wrap:wrap;gap:6px}
+.pbtns button{font:500 13px/1 var(--mono);padding:8px 10px;background:var(--bg);font-variant-numeric:tabular-nums}
+.pbtns button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.toggle{flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font:400 13px var(--body);color:var(--muted)}
+.toggle input{width:auto}
+footer{font:400 12px/1.5 var(--mono);color:var(--muted);max-width:90ch;display:flex;flex-direction:column;gap:6px}
+footer p{margin:0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Hybrid Offense · exit rules</div>
+      <h1>OCO Exit Planner</h1>
+      <p class="lede">Entry, spread, ATR and chart levels in. Stop, activation, trail, floor, the contract-fit check and the ToS ticket out.</p>
+    </div>
+    <div class="head-actions">
+      <span class="chip warn" id="exampleChip">Example trade · type over it</span>
+      <button type="button" id="loadExample">Load example</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <!-- INPUTS -->
+    <div class="col">
+      <section class="card" aria-labelledby="h-contract">
+        <h2 id="h-contract">Contract</h2>
+        <div class="fields">
+          <label>Ticker<input id="tk" type="text" autocomplete="off" spellcheck="false"></label>
+          <label>Type<div class="seg" role="group" aria-label="Call or put">
+            <button type="button" id="sideCall" aria-pressed="true">CALL</button>
+            <button type="button" id="sidePut" aria-pressed="false">PUT</button>
+          </div></label>
+          <label>Strike<input id="strike" type="number" step="0.5" inputmode="decimal"></label>
+          <label>Expiration<input id="exp" type="date"></label>
+        </div>
+        <div class="fields">
+          <label>Stock now<input id="spot" type="number" step="0.01" inputmode="decimal"></label>
+          <label>Option bid<input id="bid" type="number" step="0.01" inputmode="decimal"></label>
+          <label>Option ask<input id="ask" type="number" step="0.01" inputmode="decimal"></label>
+        </div>
+        <div class="fields">
+          <label>Your entry<input id="entry" type="number" step="0.01" inputmode="decimal"></label>
+          <label>Contracts<input id="qty" type="number" step="1" min="1" inputmode="numeric"></label>
+          <label>IV % (optional)<input id="ivOverride" type="number" step="1" inputmode="decimal" placeholder="from mid"></label>
+        </div>
+        <div class="fields">
+          <label>Daily ATR<input id="atrD" type="number" step="0.01" inputmode="decimal" placeholder="25sense D"></label>
+          <label>Weekly ATR<input id="atrW" type="number" step="0.01" inputmode="decimal" placeholder="25sense W"></label>
+        </div>
+        <div class="meta" id="contractMeta"></div>
+      </section>
+
+      <section class="card" aria-labelledby="h-rules">
+        <h2 id="h-rules">Exit rules <small id="tierLabel"></small></h2>
+        <div class="fields">
+          <label>Stop at −%<input id="stopPct" type="number" step="5" inputmode="decimal"></label>
+          <label>Activate at +%<input id="actPct" type="number" step="5" inputmode="decimal"></label>
+          <label>Trail %<input id="trailPct" type="number" step="1" inputmode="decimal"></label>
+        </div>
+        <div class="presets">
+          <div class="pset"><span>Stop</span><div class="pbtns" data-field="stopPct">
+            <button type="button" data-v="30">−30%</button><button type="button" data-v="35">−35%</button><button type="button" data-v="40">−40%</button><button type="button" data-v="45">−45%</button><button type="button" data-v="50">−50%</button></div></div>
+          <div class="pset"><span>Activate</span><div class="pbtns" data-field="actPct">
+            <button type="button" data-v="40">+40%</button><button type="button" data-v="60">+60%</button><button type="button" data-v="80">+80%</button><button type="button" data-v="100">+100%</button><button type="button" data-v="150">+150%</button></div></div>
+          <div class="pset"><span>Trail</span><div class="pbtns" data-field="trailPct">
+            <button type="button" data-v="10">10%</button><button type="button" data-v="15">15%</button><button type="button" data-v="20">20%</button><button type="button" data-v="25">25%</button></div></div>
+        </div>
+        <div class="copyrow">
+          <button type="button" id="useTier">Use tier numbers</button>
+          <span class="note" id="rulesNote"></span>
+        </div>
+        <div class="fields">
+          <label>Stock target (optional)<input id="stockPT" type="number" step="0.01" inputmode="decimal" placeholder="e.g. 60.00"></label>
+          <label>At the target<select id="ptMode">
+            <option value="trail">Tighten trail ($)</option>
+            <option value="exit">Sell at market</option>
+          </select></label>
+          <label>Tight trail $<input id="ptTrail" type="number" step="0.01" inputmode="decimal"></label>
+        </div>
+        <div class="fields">
+          <label>Fee / contract / side<input id="fee" type="number" step="0.01" inputmode="decimal"></label>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h-levels">
+        <h2 id="h-levels">Chart levels <small>stock prices from your chart</small></h2>
+        <div class="lvl-list" id="lvlList"></div>
+        <div class="copyrow"><button type="button" id="addLvl">Add level</button></div>
+      </section>
+    </div>
+
+    <!-- OUTPUTS -->
+    <div class="col">
+      <section class="card" aria-labelledby="h-numbers">
+        <h2 id="h-numbers">The numbers <small id="numbersSub"></small></h2>
+        <div class="board">
+          <div class="cell stop"><span class="k">Stop / limit</span><span class="v" id="oStop">–</span><span class="s" id="oStopS"></span></div>
+          <div class="cell act"><span class="k">Activate at</span><span class="v" id="oAct">–</span><span class="s" id="oActS"></span></div>
+          <div class="cell trail"><span class="k">Trail (type in % mode)</span><span class="v" id="oTrail">–</span><span class="s" id="oTrailS"></span></div>
+          <div class="cell floor"><span class="k">Floor once active</span><span class="v" id="oFloor">–</span><span class="s" id="oFloorS"></span></div>
+        </div>
+        <div class="status" id="status"></div>
+        <div class="money" id="money"></div>
+        <div class="alerts" id="alerts"></div>
+      </section>
+
+      <section class="card" aria-labelledby="h-fit">
+        <h2 id="h-fit">Contract fit <small>can this contract survive the hold, and is the name worth carrying?</small></h2>
+        <div class="fitgrid" id="fitGrid"></div>
+        <p class="verdict" id="fitVerdict"></p>
+        <div class="tablewrap"><table id="days"></table></div>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--gain-soft);border:1px solid var(--gain)"></i>stand-still under 0.3 · can carry</span>
+          <span><i class="sw" style="background:var(--warn-soft);border:1px solid var(--warn)"></i>0.3–0.5 · same day only</span>
+          <span><i class="sw" style="background:var(--loss-soft);border:1px solid var(--loss)"></i>0.5+ skip · or the stop line has crossed the stock</span>
+        </div>
+        <p class="note">Each column assumes the stock stays where it is now and IV doesn't change. The stop row is the stock price where your % stop fills at that moment; it moves toward the stock every session.</p>
+      </section>
+
+      <section class="card" aria-labelledby="h-ticket">
+        <h2 id="h-ticket">ToS ticket</h2>
+        <div class="ticket" id="ticket"></div>
+        <div class="copyrow">
+          <button type="button" class="primary" id="copyTicket">Copy ticket</button>
+          <span class="copied" id="copied" hidden>Copied</span>
+        </div>
+        <pre id="ticketText" hidden></pre>
+      </section>
+
+      <section class="card" aria-labelledby="h-map">
+        <h2 id="h-map">Level map <small>option value at each level, now and at each close</small></h2>
+        <label class="toggle"><input type="checkbox" id="showPct"> Show % vs your entry</label>
+        <div class="tablewrap"><table id="map"></table></div>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--accent-soft);border:1px solid var(--accent)"></i>at or past activation</span>
+          <span><i class="sw" style="background:var(--loss-soft);border:1px solid var(--loss)"></i>at or under the stop</span>
+          <span><i class="sw" style="background:var(--gain)"></i>above entry</span>
+          <span><i class="sw" style="background:var(--loss)"></i>below entry</span>
+          <span><i class="sw" style="border:2px dashed var(--loss)"></i>stop line: where your % stop fills</span>
+          <span><i class="sw" style="border:2px dashed var(--accent)"></i>activation line: where the trail turns on</span>
+          <span><i class="sw" style="border:2px dashed var(--gain)"></i>trail floor: the worst exit once the trail is on</span>
+        </div>
+        <p class="note">All three lines move with the Stop, Activate and Trail presets, and all are today's stock prices. Each session the stop and activation lines drift away from your direction (decay), so the stock has to travel farther to reach activation. The floor is the minimum: if the option keeps climbing past activation, the trail rises with it.</p>
+      </section>
+
+      <section class="card" aria-labelledby="h-check">
+        <h2 id="h-check">Before you hit send</h2>
+        <ol class="check">
+          <li>Contract fit first: delta 0.35 or more, stand-still under 0.5. Between 0.3 and 0.5, the ticket is a same-day ticket.</li>
+          <li>Trail in % mode: type <code>20</code>, never <code>0.20</code>. 0.20% sells on the next tick.</li>
+          <li>Option TP condition symbol is the <b>option</b> (starts with a dot). Stock TP condition is the <b>stock</b>.</li>
+          <li>Condition direction: option ≥ activation. Stock target ≥ for calls, ≤ for puts.</li>
+          <li>Every leg in one OCO sells the same quantity. Different exits for different contracts means separate OCO groups.</li>
+          <li>After sending: conditional legs read <code>WAIT COND</code>. Anything else means the condition already fired.</li>
+          <li>Stop type <code>MARK</code> on every leg, so a single odd print can't trip it.</li>
+        </ol>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <p>Model: Black-Scholes, 4% rate, no dividends, implied vol backed out from the bid/ask mid unless you enter one. Option values are estimates, not quotes. IV moves and wide spreads will shift real fills. Your inputs are saved in this browser only.</p>
+    <p>Contract fit: stand-still = theta ÷ delta ÷ daily ATR, the daily move the stock needs just to keep the option flat. Trend factor = weekly ATR ÷ daily ATR. Thresholds come from the Oct 2026 stop lab (622 past trades): delta under 0.35 and stand-still 0.5+ lost money; carries paid on names with a trend factor of 3+. They're candidates, still being tested on new trades.</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const R=0.04, KEY='oco-exit-planner-v1';
+const TIERS=[
+  {max:0.10,label:'Under $0.10',act:100,trail:25,note:'New tier, still being tested'},
+  {max:0.50,label:'$0.10–0.49',act:60,trail:20},
+  {max:1.50,label:'$0.50–1.49',act:40,trail:12},
+  {max:3.00,label:'$1.50–2.99',act:30,trail:10},
+  {max:Infinity,label:'$3.00 and up',act:25,trail:8}];
+const FIELDS=['tk','strike','exp','spot','bid','ask','entry','qty','ivOverride','atrD','atrW','stopPct','actPct','trailPct','stockPT','ptMode','ptTrail','fee'];
+let st={side:'call',levels:[],rulesTouched:false,example:true,showPct:false};
+
+/* ---------- time (all in New York wall-clock) ---------- */
+function etParts(){
+  const f=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+  const p={};f.formatToParts(new Date()).forEach(x=>p[x.type]=x.value);
+  let h=+p.hour; if(h===24)h=0;
+  return {y:+p.year,m:+p.month,d:+p.day,h:h,mi:+p.minute};
+}
+function nowWall(){const p=etParts();return Date.UTC(p.y,p.m-1,p.d,p.h,p.mi);}
+function parseDate(s){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||'');return m?{y:+m[1],m:+m[2],d:+m[3]}:null;}
+function nextFriday(){
+  const p=etParts();let t=Date.UTC(p.y,p.m-1,p.d);
+  for(let i=0;i<14;i++){const d=new Date(t);if(d.getUTCDay()===5&&i>=2)break;t+=864e5;}
+  const d=new Date(t);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+}
+const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function closesUntil(exp,now){
+  const out=[];const p=etParts();let t=Date.UTC(p.y,p.m-1,p.d);const e=Date.UTC(exp.y,exp.m-1,exp.d);
+  for(let i=0;i<60&&t<=e;i++){const d=new Date(t),w=d.getUTCDay();
+    if(w>0&&w<6){const cw=t+16*36e5;if(cw>now)out.push({wall:cw,dow:DOW[w],md:(d.getUTCMonth()+1)+'/'+d.getUTCDate(),isExp:t===e});}
+    t+=864e5;}
+  return out;
+}
+/* opens and closes from now to expiration (expiration close left out: the option is intrinsic there) */
+function sessionsUntil(exp,now){
+  const out=[];const p=etParts();let t=Date.UTC(p.y,p.m-1,p.d);const e=Date.UTC(exp.y,exp.m-1,exp.d);
+  for(let i=0;i<60&&t<=e;i++){const d=new Date(t),w=d.getUTCDay();
+    if(w>0&&w<6){const md=(d.getUTCMonth()+1)+'/'+d.getUTCDate();
+      const ow=t+9.5*36e5, cw=t+16*36e5;
+      if(ow>now)out.push({wall:ow,h:DOW[w]+' open',md:md});
+      if(cw>now&&t!==e)out.push({wall:cw,h:DOW[w]+' close',md:md});}
+    t+=864e5;}
+  return out;
+}
+
+/* ---------- pricing ---------- */
+function ncdf(x){const t=1/(1+0.2316419*Math.abs(x));const d=0.3989422804014327*Math.exp(-x*x/2);
+  const p=d*t*(0.319381530+t*(-0.356563782+t*(1.781477937+t*(-1.821255978+t*1.330274429))));return x>0?1-p:p;}
+function bs(side,S,K,T,v){
+  if(T<=0||v<=0)return Math.max(side==='call'?S-K:K-S,0);
+  const sq=v*Math.sqrt(T),d1=(Math.log(S/K)+(R+v*v/2)*T)/sq,d2=d1-sq,df=Math.exp(-R*T);
+  return side==='call'?S*ncdf(d1)-K*df*ncdf(d2):K*df*ncdf(-d2)-S*ncdf(-d1);
+}
+function solveIV(side,S,K,T,price){
+  if(!(price>0)||T<=0)return null;
+  let lo=0.01,hi=5;if(bs(side,S,K,T,lo)>price||bs(side,S,K,T,hi)<price)return null;
+  for(let i=0;i<100;i++){const m=(lo+hi)/2;if(bs(side,S,K,T,m)>price)hi=m;else lo=m;}
+  return (lo+hi)/2;
+}
+function spotFor(side,K,T,v,target){
+  if(!(target>0)||!v)return null;
+  let lo=K*0.2,hi=K*3;
+  const f=s=>bs(side,s,K,T,v);
+  if(side==='call'){if(f(lo)>target||f(hi)<target)return null;}else{if(f(hi)>target||f(lo)<target)return null;}
+  for(let i=0;i<90;i++){const m=(lo+hi)/2,val=f(m);
+    if(side==='call'){if(val<target)lo=m;else hi=m;}else{if(val>target)lo=m;else hi=m;}}
+  return (lo+hi)/2;
+}
+/* delta by finite difference; theta = value lost per calendar day with the stock flat */
+function greeks(side,S,K,T,v){
+  if(!(T>0&&v&&S&&K))return null;
+  const h=Math.max(S*0.005,0.005);
+  const delta=(bs(side,S+h,K,T,v)-bs(side,S-h,K,T,v))/(2*h);
+  // with less than a day left, measure the decay over what remains and scale it to a per-day rate
+  const step=Math.min(1/365,T);
+  const theta=(bs(side,S,K,T-step,v)-bs(side,S,K,T,v))*(1/365)/step;
+  return {delta:delta,theta:theta};
+}
+function standstill(g,atr){if(!g||!(atr>0))return null;return Math.abs(g.theta)/Math.max(Math.abs(g.delta),1e-4)/atr;}
+function ssClass(x){return x==null?'':x<0.3?'ok':x<0.5?'warnc':'badc';}
+
+/* ---------- helpers ---------- */
+const num=id=>{const v=parseFloat($(id).value);return isFinite(v)?v:null;};
+const r2=x=>Math.round(x*100+1e-9)/100;
+const f2=x=>x==null||!isFinite(x)?'–':x.toFixed(2);
+const pct=x=>(x>=0?'+':'')+Math.round(x*100)+'%';
+const usd=x=>(x<0?'−$':'$')+Math.abs(x).toFixed(2);
+const tierFor=e=>TIERS.find(t=>e<t.max)||TIERS[TIERS.length-1];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- state ---------- */
+function save(){try{const o={side:st.side,levels:st.levels,rulesTouched:st.rulesTouched,example:st.example,showPct:st.showPct};
+  FIELDS.forEach(f=>o[f]=$(f).value);localStorage.setItem(KEY,JSON.stringify(o));}catch(e){}}
+function load(){try{const s=localStorage.getItem(KEY);return s?JSON.parse(s):null;}catch(e){return null;}}
+function apply(o){
+  FIELDS.forEach(f=>{if(o[f]!=null)$(f).value=o[f];});
+  st.side=o.side||'call';st.levels=Array.isArray(o.levels)?o.levels:[];st.rulesTouched=!!o.rulesTouched;
+  st.example=!!o.example;st.showPct=!!o.showPct;$('showPct').checked=st.showPct;
+}
+function example(){
+  apply({tk:'MARA',side:'put',strike:'8.5',exp:nextFriday(),spot:'8.56',bid:'0.23',ask:'0.25',entry:'0.21',qty:'1',ivOverride:'',
+    atrD:'0.72',atrW:'2.08',stopPct:'50',actPct:'60',trailPct:'20',stockPT:'8.20',ptMode:'trail',ptTrail:'0.05',fee:'0.66',
+    levels:[{label:'PDL',price:'8.98'},{label:'30m stop',price:'8.90'},{label:'ADR lower',price:'8.49'},{label:'Swing PT',price:'8.20'},{label:'Swing PT 2',price:'7.63'}],
+    rulesTouched:false,example:true,showPct:false});
+}
+
+/* ---------- levels editor ---------- */
+function renderLevelInputs(){
+  const box=$('lvlList');box.innerHTML='';
+  st.levels.forEach((L,i)=>{
+    const row=document.createElement('div');row.className='lvl';
+    row.innerHTML='<input type="text" id="lvlLab'+i+'" aria-label="Level name" value="'+esc(L.label||'')+'" placeholder="Name">'+
+      '<input type="number" step="0.01" inputmode="decimal" id="lvlPx'+i+'" aria-label="Stock price" value="'+esc(L.price||'')+'" placeholder="Price">'+
+      '<button type="button" aria-label="Remove level" data-rm="'+i+'">✕</button>';
+    box.appendChild(row);
+  });
+}
+$('lvlList').addEventListener('input',e=>{
+  const m=/^lvl(Lab|Px)(\d+)$/.exec(e.target.id);if(!m)return;
+  st.levels[+m[2]][m[1]==='Lab'?'label':'price']=e.target.value;st.example=false;update();
+});
+$('lvlList').addEventListener('click',e=>{const i=e.target.getAttribute('data-rm');if(i==null)return;st.levels.splice(+i,1);st.example=false;renderLevelInputs();update();});
+$('addLvl').addEventListener('click',()=>{st.levels.push({label:'',price:''});renderLevelInputs();update();const n=st.levels.length-1;$('lvlLab'+n).focus();});
+
+/* ---------- main compute ---------- */
+function update(){
+  $('sideCall').setAttribute('aria-pressed',st.side==='call');$('sidePut').setAttribute('aria-pressed',st.side==='put');
+  $('exampleChip').hidden=!st.example;
+
+  const tk=($('tk').value||'').trim().toUpperCase()||'TICKER', side=st.side, K=num('strike'), S=num('spot');
+  const bid=num('bid'), ask=num('ask'), entry=num('entry'), qty=Math.max(1,Math.round(num('qty')||1));
+  const fee=num('fee')??0.66, exp=parseDate($('exp').value), now=nowWall();
+  const atrD=num('atrD'), atrW=num('atrW');
+  const tag=(K!=null?(K%1?K.toFixed(1):K)+'':'?')+(side==='call'?'C':'P');
+
+  // tier
+  const tier=entry!=null?tierFor(entry):null;
+  if(tier&&!st.rulesTouched){$('actPct').value=tier.act;$('trailPct').value=tier.trail;}
+  $('tierLabel').textContent=tier?('Tier: '+tier.label+(tier.note?' · '+tier.note:'')):'';
+  $('rulesNote').textContent=st.rulesTouched?'Custom numbers in use':'Using tier numbers';
+  const stopPct=num('stopPct')??50, actPct=num('actPct')??60, trailPct=num('trailPct')??20;
+  document.querySelectorAll('.pbtns').forEach(g=>{const cur=num(g.dataset.field);
+    g.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',cur!=null&&+b.dataset.v===cur));});
+
+  // market
+  const mark=bid!=null&&ask!=null?(bid+ask)/2:(bid??ask);
+  const spread=bid!=null&&ask!=null?Math.max(ask-bid,0):null;
+  const expWall=exp?Date.UTC(exp.y,exp.m-1,exp.d,16,0):null;
+  const daysLeft=expWall!=null?(expWall-now)/864e5:null;
+  const T=daysLeft!=null?Math.max(daysLeft,0)/365:null;
+  const ivO=num('ivOverride');
+  let iv=ivO?ivO/100:(S&&K&&T&&mark?solveIV(side,S,K,T,mark):null);
+  const ivFromMid=!ivO;
+
+  const meta=[];
+  if(mark!=null)meta.push('Mark <b>'+mark.toFixed(3).replace(/0$/,'')+'</b>');
+  if(spread!=null)meta.push('Spread <b>'+spread.toFixed(2)+'</b>');
+  if(daysLeft!=null)meta.push('Time left <b>'+(daysLeft>0?daysLeft.toFixed(1)+' days':'expired')+'</b>');
+  meta.push('IV <b>'+(iv?Math.round(iv*100)+'%':'–')+'</b>'+(iv?(ivFromMid?' from mid':' manual'):''));
+  if(mark!=null&&entry)meta.push('Open P/L <b class="'+(mark>=entry?'pos':'neg')+'">'+pct(mark/entry-1)+'</b>');
+  $('contractMeta').innerHTML=meta.join('');
+
+  // numbers
+  const alerts=[];
+  let stopPx=null,limPx=null,act=null,trailD=null,floor=null;
+  if(entry){
+    stopPx=r2(entry*(1-stopPct/100));limPx=Math.max(0.01,r2(stopPx-0.01));
+    act=r2(entry*(1+actPct/100));trailD=act*trailPct/100;floor=r2(act-trailD);
+  }
+  const eqS=(target)=>iv&&T>0&&K?spotFor(side,K,T,iv,target):null;
+  const sTxt=(x)=>x!=null?'≈ '+tk+' <b>'+x.toFixed(2)+'</b> today':'';
+
+  $('oStop').textContent=stopPx!=null?f2(stopPx)+' / '+f2(limPx):'–';
+  $('oStopS').innerHTML=entry?('−'+stopPct+'% · '+sTxt(eqS(stopPx))):'Enter your entry price';
+  $('oAct').textContent=f2(act);
+  $('oActS').innerHTML=entry?('+'+actPct+'% · '+sTxt(eqS(act))):'';
+  $('oTrail').textContent=entry?trailPct+'%':'–';
+  $('oTrailS').innerHTML=entry?('≈ <b>$'+trailD.toFixed(2)+'</b> at activation · grows as it climbs'):'';
+  $('oFloor').textContent=f2(floor);
+  $('oFloorS').innerHTML=entry?('<b class="'+(floor>=entry?'pos':'neg')+'">'+pct(floor/entry-1)+'</b> locked · '+sTxt(eqS(floor))):'';
+  $('numbersSub').textContent=entry?(tk+' '+tag+' · entry '+f2(entry)+' × '+qty):'';
+
+  // status chips
+  const chips=[];
+  if(spread!=null&&trailD!=null){
+    const need=2*spread, ok=trailD+1e-9>=need;
+    if(ok)chips.push('<span class="chip ok">Spread check passes · trail $'+trailD.toFixed(2)+' ≥ 2 × '+spread.toFixed(2)+'</span>');
+    else{const needPct=Math.ceil(need/act*100);
+      chips.push('<span class="chip bad">Spread check fails · trail $'+trailD.toFixed(2)+' &lt; $'+need.toFixed(2)+'</span>');
+      alerts.push(['bad','The trail is tighter than twice the spread, so normal bid/ask wobble can stop you out. Widen the trail to <b>'+needPct+'%</b> or more, or skip the option-price trigger and use a stock level.']);}
+  }
+  if(entry&&qty){const rt=2*fee;chips.push('<span class="chip'+(rt/(entry*100)>0.1?' warn':'')+'">Fees '+Math.round(rt/(entry*100)*100)+'% of premium round trip</span>');}
+  $('status').innerHTML=chips.join('');
+
+  // money
+  if(entry){
+    const net=px=>((px-entry)*100-2*fee)*qty;
+    const rows=[['If the stop fills ('+f2(limPx)+')',net(limPx)],['At the floor ('+f2(floor)+')',net(floor)],['Cost basis',-(entry*100+fee)*qty]];
+    $('money').innerHTML=rows.map(r=>'<div><span>'+r[0]+'</span><strong class="'+(r[1]>=0?'pos':'neg')+'">'+usd(r[1])+'</strong></div>').join('');
+  } else $('money').innerHTML='';
+
+  // situational alerts
+  if(daysLeft!=null&&daysLeft<=0)alerts.push(['bad','This expiration has passed. Pick the contract’s real expiration date.']);
+  if(mark!=null&&act!=null&&mark>=act)alerts.push(['warn','The mark ('+f2(mark)+') is already at or past activation ('+f2(act)+'). The condition would fire the moment you send. Send the trail without a condition, or raise the activation.']);
+  if(mark!=null&&stopPx!=null&&mark<=stopPx)alerts.push(['bad','The mark ('+f2(mark)+') is already at or under the stop ('+f2(stopPx)+'). The stop triggers as soon as you send.']);
+  if(S&&K&&T&&mark&&!iv&&!ivO)alerts.push(['warn','Couldn’t back out IV from this mid (it may be below the option’s intrinsic value or the quote is stale). Enter an IV % to price the level map.']);
+  const ptv=num('stockPT');
+  if(ptv&&S){const wrong=side==='call'?ptv<=S:ptv>=S;if(wrong)alerts.push(['warn','Stock target '+ptv.toFixed(2)+' is on the wrong side of the current price for a '+side+'. The condition would fire at once.']);}
+  if(stopPx!=null&&iv&&T>0&&K&&S){
+    const lvls=st.levels.map(L=>({l:L.label,p:parseFloat(L.price)})).filter(L=>isFinite(L.p));
+    const sStop=eqS(stopPx);
+    const chartStop=lvls.filter(L=>/sl|stop/i.test(L.l));
+    if(sStop&&chartStop.length){
+      const hard=side==='call'?Math.min(...chartStop.map(L=>L.p)):Math.max(...chartStop.map(L=>L.p));
+      const optFirst=side==='call'?sStop>hard:sStop<hard;
+      if(optFirst)alerts.push(['info','Your '+stopPct+'% option stop (≈ '+tk+' '+sStop.toFixed(2)+' today) fires before your chart stop ('+hard.toFixed(2)+'). Decay pulls that trigger closer each day. Decide which rule is in charge on this trade.']);
+    }
+  }
+
+  // contract fit (adds its own alerts)
+  renderFit({side,K,S,iv,T,entry,stopPx,act,exp,expWall,now,tk,atrD,atrW,ptv,alerts});
+  $('alerts').innerHTML=alerts.map(a=>'<div class="alert '+a[0]+'">'+a[1]+'</div>').join('');
+
+  // ticket
+  const q='−'+qty, pt=num('stockPT'), ptMode=$('ptMode').value, ptTrail=num('ptTrail')??0.10;
+  const legs=[];
+  if(entry){
+    legs.push({c:'l-stop',t:'Stop',code:'SELL '+q+' · Stop Limit · stop '+f2(stopPx)+' / limit '+f2(limPx)+' · GTC',h:'Stop type: MARK. No condition.'});
+    const already=mark!=null&&mark>=act;
+    legs.push({c:'l-act',t:'Option TP · trail',code:'SELL '+q+' · Trail Stop · Mark · % · −'+trailPct+' · GTC',
+      h:already?'Mark is already past '+f2(act)+'. Send without a condition.':'Condition: '+tk+' '+tag+' (the option) · MARK at or above '+f2(act)});
+    if(pt){
+      const dir=side==='call'?'at or above':'at or below';
+      legs.push({c:'l-pt',t:'Stock target',code:ptMode==='exit'?'SELL '+q+' · Market · GTC':'SELL '+q+' · Trail Stop · Mark · $ · −'+f2(ptTrail)+' · GTC',
+        h:'Condition: '+tk+' (the stock) · MARK '+dir+' '+pt.toFixed(2)+(ptMode==='trail'?' · tightens the trail, does not sell at the level':'')});
+    }
+  }
+  $('ticket').innerHTML=legs.length?('<div class="grouphead">One OCO group · every leg SELL '+q+' · GTC · [TO CLOSE] · whichever fills first cancels the rest</div>'+
+    legs.map((L,i)=>'<div class="leg '+L.c+'"><div class="n">'+(i+1)+'</div><div class="b"><span class="t">'+L.t+'</span><code>'+esc(L.code)+'</code><span class="h">'+esc(L.h)+'</span></div></div>').join('')):
+    '<div class="grouphead">Enter your entry price to build the ticket.</div>';
+  $('ticketText').textContent=legs.length?(tk+' '+tag+' exp '+$('exp').value+' · OCO, every leg SELL '+q+', GTC\n'+legs.map((L,i)=>(i+1)+'. '+L.t+': '+L.code+'\n   '+L.h).join('\n')):'';
+
+  renderMap({side,K,S,iv,entry,act,floor,stopPx,stopPct,actPct,trailPct,exp,expWall,now,T,tk});
+  save();
+}
+
+function renderFit(c){
+  const grid=$('fitGrid'), tbl=$('days'), verdict=$('fitVerdict');
+  if(!(c.K&&c.S&&c.iv&&c.T>0)){
+    grid.innerHTML='';verdict.textContent='Fill in strike, expiration, stock price and bid/ask (or IV) to check the contract.';tbl.innerHTML='';return;}
+  const g=greeks(c.side,c.S,c.K,c.T,c.iv), ad=Math.abs(g.delta), thAbs=Math.abs(g.theta);
+  const td=thAbs/Math.max(ad,1e-4), ss=standstill(g,c.atrD), tf=(c.atrD>0&&c.atrW>0)?c.atrW/c.atrD:null;
+  const mv=c.side==='call'?'rise':'drop';
+  const dChip=ad>=0.35?'<span class="chip ok">Passes · 0.35+</span>':'<span class="chip bad">Under 0.35</span>';
+  const sChip=ss==null?'<span class="chip warn">Enter daily ATR</span>':ss<0.3?'<span class="chip ok">Can carry</span>':ss<0.5?'<span class="chip warn">Same day only</span>':'<span class="chip bad">Skip · Lotto rules only</span>';
+  const tChip=tf==null?'<span class="chip warn">Enter both ATRs</span>':tf>=3?'<span class="chip ok">Trending · carry candidate</span>':tf>=2.4?'<span class="chip">Mixed</span>':'<span class="chip warn">Choppy · lean day trade</span>';
+  grid.innerHTML=
+    '<div class="fit"><span class="k">Delta</span><span class="v">'+ad.toFixed(2)+'</span>'+dChip+'<span class="s">$'+(ad*100).toFixed(0)+' per $1 move in '+esc(c.tk)+'</span></div>'+
+    '<div class="fit"><span class="k">Stand-still</span><span class="v">'+(ss==null?'–':ss.toFixed(2))+'</span>'+sChip+'<span class="s">theta <b>$'+(thAbs*100).toFixed(2)+'</b>/day'+(c.entry?' ('+Math.round(thAbs/c.entry*100)+'% of entry)':'')+' ÷ delta = '+esc(c.tk)+' must '+mv+' <b>$'+td.toFixed(2)+'</b>/day'+(ss!=null?' = '+ss.toFixed(2)+' daily ATR':'')+'</span></div>'+
+    '<div class="fit"><span class="k">Trend factor</span><span class="v">'+(tf==null?'–':tf.toFixed(1))+'</span>'+tChip+'<span class="s">weekly ATR ÷ daily ATR · 3+ means moves stack across days</span></div>';
+
+  // day-by-day grid
+  const ses=sessionsUntil(c.exp,c.now).slice(0,10);
+  const cols=[{h:'Now',md:'',T:c.T}].concat(ses.map(x=>({h:x.h,md:x.md,T:Math.max((c.expWall-x.wall)/864e5,0)/365})));
+  const rows=[];
+  const cellsSS=cols.map(x=>{const gg=greeks(c.side,c.S,c.K,x.T,c.iv);const s=standstill(gg,c.atrD);return {v:s,txt:s==null?'–':s.toFixed(2),cls:ssClass(s)};});
+  rows.push({l:'Stand-still if flat',cells:cellsSS});
+  let crossAt=null, skipAt=null;
+  cols.forEach((x,i)=>{if(skipAt==null&&cellsSS[i].v!=null&&cellsSS[i].v>=0.5)skipAt=i;});
+  if(c.stopPx!=null){
+    rows.push({l:'Stop fills at '+c.tk,cells:cols.map((x,i)=>{const s=spotFor(c.side,c.K,x.T,c.iv,c.stopPx);
+      const crossed=s==null?true:(c.side==='call'?s>=c.S:s<=c.S);
+      if(crossed&&crossAt==null)crossAt=i;
+      return {txt:s==null?'flat = stopped':s.toFixed(2),cls:crossed?'badc':''};})});
+    rows.push({l:'Breakeven at '+c.tk,cells:cols.map(x=>{const s=spotFor(c.side,c.K,x.T,c.iv,c.entry);return {txt:s==null?'–':s.toFixed(2),cls:''};})});
+    rows.push({l:'Activation at '+c.tk,cells:cols.map(x=>{const s=spotFor(c.side,c.K,x.T,c.iv,c.act);return {txt:s==null?'–':s.toFixed(2),cls:''};})});
+  }
+  const valCell=(px,x)=>{const v=bs(c.side,px,c.K,x.T,c.iv);let cls='';if(c.entry){cls=v>=c.entry?'up':'down';}
+    if(c.act!=null&&v>=c.act-1e-9)cls='hit-act';else if(c.stopPx!=null&&v<=c.stopPx+1e-9)cls='hit-stop';
+    return {txt:v.toFixed(2)+(c.entry?'<span class="p">'+pct(v/c.entry-1)+'</span>':''),cls:cls};};
+  rows.push({l:'Value if '+c.tk+' flat',cells:cols.map(x=>valCell(c.S,x))});
+  if(c.ptv)rows.push({l:'Value at target '+c.ptv.toFixed(2),cells:cols.map(x=>valCell(c.ptv,x))});
+  let h='<thead><tr><th class="lab">If '+esc(c.tk)+' stays at '+c.S.toFixed(2)+'</th>'+cols.map(x=>'<th>'+x.h+(x.md?'<small>'+x.md+'</small>':'')+'</th>').join('')+'</tr></thead><tbody>';
+  rows.forEach(r=>{h+='<tr><td class="lab" title="'+esc(r.l)+'">'+esc(r.l)+'</td>'+r.cells.map(z=>'<td class="'+z.cls+'">'+z.txt+'</td>').join('')+'</tr>';});
+  tbl.innerHTML=h+'</tbody>';
+
+  // verdict sentence + alerts
+  const parts=[];
+  if(ad<0.35){parts.push('<b>Delta '+ad.toFixed(2)+' is under 0.35.</b> The contract barely moves with the stock; in past trades this group lost money under every stop.');
+    c.alerts.push(['warn','Delta '+ad.toFixed(2)+' is under 0.35. A closer strike or a later expiration moves more with the stock.']);}
+  if(ss!=null){
+    if(ss>=0.5){parts.push('<b>Stand-still '+ss.toFixed(2)+':</b> '+esc(c.tk)+' needs more than half a day’s range every day just to hold value. Skip it unless this is a Lotto Friday ticket.');
+      c.alerts.push(['bad','Stand-still '+ss.toFixed(2)+' (0.5+). In past trades this group lost money under every stop and target. Skip it, or treat it as a Lotto Friday ticket with its own rules.']);}
+    else if(ss>=0.3){parts.push('<b>Stand-still '+ss.toFixed(2)+':</b> fine for today, build a same-day ticket and be flat by the close.');
+      c.alerts.push(['warn','Stand-still '+ss.toFixed(2)+' (0.3–0.5): same-day contract. Plan to be flat by the close.']);}
+    else parts.push('<b>Stand-still '+ss.toFixed(2)+':</b> the contract can carry.');
+  }
+  if(crossAt!=null)parts.push('With '+esc(c.tk)+' flat, your stop line reaches the stock at <b>'+(crossAt===0?'now':cols[crossAt].h+' '+cols[crossAt].md)+'</b>. Plan to be out before then.');
+  else if(skipAt!=null)parts.push('Stand-still crosses 0.5 at <b>'+cols[skipAt].h+' '+cols[skipAt].md+'</b>. Treat that as your last session.');
+  if(tf!=null){parts.push(tf>=3?'Trend factor '+tf.toFixed(1)+' supports a carry.':tf<2.4?'Trend factor '+tf.toFixed(1)+': choppy name, carries have lost here before. Lean day trade.':'Trend factor '+tf.toFixed(1)+': mixed.');}
+  verdict.innerHTML=parts.join(' ');
+}
+
+function renderMap(c){
+  const tbl=$('map');
+  if(!(c.K&&c.S&&c.iv&&c.exp&&c.T>0)){tbl.innerHTML='<tr><td class="lab" style="position:static">Fill in strike, expiration, stock price and bid/ask (or IV) to map your levels.</td></tr>';return;}
+  const closes=closesUntil(c.exp,c.now).slice(0,12);
+  const cols=[{h:'Now',sub:'',T:c.T}].concat(closes.map(x=>({h:x.isExp?'Exp':x.dow,sub:x.md+' close',T:Math.max((c.expWall-x.wall)/864e5,0)/365})));
+  let rows=st.levels.map(L=>({l:L.label||'Level',p:parseFloat(L.price)})).filter(r=>isFinite(r.p));
+  rows.push({l:'Stock now',p:c.S,now:true});
+  const addLine=(px,label,kind)=>{if(px==null)return;const s=spotFor(c.side,c.K,c.T,c.iv,px);if(s!=null)rows.push({l:label,p:s,line:kind});};
+  addLine(c.stopPx,'−'+c.stopPct+'% stop ('+f2(c.stopPx)+')','stop');
+  addLine(c.act,'+'+c.actPct+'% activate ('+f2(c.act)+')','act');
+  addLine(c.floor,c.trailPct+'% trail floor ('+f2(c.floor)+')','floor');
+  rows.sort((a,b)=>b.p-a.p);
+  let h='<thead><tr><th class="lab">Level</th><th>'+esc(c.tk)+'</th>'+cols.map(x=>'<th>'+x.h+(x.sub?'<small>'+x.sub+'</small>':'')+'</th>').join('')+'</tr></thead><tbody>';
+  rows.forEach(r=>{
+    h+='<tr'+(r.now?' class="now"':r.line?' class="line-'+r.line+'"':'')+'><td class="lab" title="'+esc(r.l)+'">'+esc(r.l)+'</td><td class="spot">'+(r.line?'≈ ':'')+r.p.toFixed(2)+'</td>';
+    cols.forEach(x=>{
+      const v=bs(c.side,r.p,c.K,x.T,c.iv);
+      let cls='';
+      if(c.act!=null&&v>=c.act-1e-9)cls='hit-act';else if(c.stopPx!=null&&v<=c.stopPx+1e-9)cls='hit-stop';else if(c.entry)cls=v>=c.entry?'up':'down';
+      h+='<td class="'+cls+'">'+v.toFixed(2)+(st.showPct&&c.entry?'<span class="p">'+pct(v/c.entry-1)+'</span>':'')+'</td>';
+    });
+    h+='</tr>';
+  });
+  tbl.innerHTML=h+'</tbody>';
+}
+
+/* ---------- events ---------- */
+document.querySelector('.main').addEventListener('input',e=>{
+  if(!FIELDS.includes(e.target.id))return;
+  if(e.target.id==='actPct'||e.target.id==='trailPct')st.rulesTouched=true;
+  st.example=false;update();
+});
+document.querySelector('.main').addEventListener('change',e=>{if(e.target.id==='ptMode'){st.example=false;update();}});
+$('sideCall').addEventListener('click',()=>{st.side='call';st.example=false;update();});
+$('sidePut').addEventListener('click',()=>{st.side='put';st.example=false;update();});
+document.querySelectorAll('.pbtns').forEach(g=>g.addEventListener('click',e=>{
+  const v=e.target.dataset&&e.target.dataset.v;if(v==null)return;const f=g.dataset.field;
+  $(f).value=v;if(f!=='stopPct')st.rulesTouched=true;st.example=false;update();}));
+$('useTier').addEventListener('click',()=>{st.rulesTouched=false;update();});
+$('showPct').addEventListener('change',e=>{st.showPct=e.target.checked;update();});
+$('loadExample').addEventListener('click',()=>{example();renderLevelInputs();update();});
+$('copyTicket').addEventListener('click',()=>{
+  const txt=$('ticketText').textContent,ok=()=>{$('copied').hidden=false;setTimeout(()=>$('copied').hidden=true,1600);};
+  const fallback=()=>{const pre=$('ticketText');pre.hidden=false;const r=document.createRange();r.selectNodeContents(pre);const s=getSelection();s.removeAllRanges();s.addRange(r);};
+  try{navigator.clipboard.writeText(txt).then(ok,fallback);}catch(e){fallback();}
+});
+
+const saved=load();
+if(saved)apply(saved);else example();
+renderLevelInputs();update();
+setInterval(update,60000);
+})();
+</script>
+<script>if('serviceWorker' in navigator){addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
+</body>
+</html>
