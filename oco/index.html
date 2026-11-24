@@ -195,11 +195,17 @@ footer p{margin:0}
           <label>Strike<input id="strike" type="number" step="0.5" inputmode="decimal"></label>
           <label>Expiration<input id="exp" type="date"></label>
         </div>
+        <label class="toggle"><input type="checkbox" id="closedMode"> Market closed · price from the last trade</label>
         <div class="fields">
-          <label>Stock now<input id="spot" type="number" step="0.01" inputmode="decimal"></label>
-          <label>Option bid<input id="bid" type="number" step="0.01" inputmode="decimal"></label>
-          <label>Option ask<input id="ask" type="number" step="0.01" inputmode="decimal"></label>
+          <label><span id="spotLbl">Stock now</span><input id="spot" type="number" step="0.01" inputmode="decimal"></label>
+          <label class="live-only">Option bid<input id="bid" type="number" step="0.01" inputmode="decimal"></label>
+          <label class="live-only">Option ask<input id="ask" type="number" step="0.01" inputmode="decimal"></label>
+          <label class="closed-only" hidden>Option last price<input id="lastPx" type="number" step="0.01" inputmode="decimal" placeholder="4:00 close"></label>
+          <label class="closed-only" hidden>Typical spread<input id="spreadEst" type="number" step="0.01" inputmode="decimal" placeholder="e.g. 0.03"></label>
+          <label class="closed-only" hidden>Stock pre-market<input id="preMkt" type="number" step="0.01" inputmode="decimal" placeholder="optional"></label>
         </div>
+        <label class="toggle closed-only" hidden><input type="checkbox" id="earnFlag"> Earnings before the next open (BMO / AMC)</label>
+        <p class="note closed-only" hidden>Enter the stock's closing price and the option's last trade from the close. The page backs out IV at the close, so after-hours quotes can't skew it.</p>
         <div class="fields">
           <label>Your entry<input id="entry" type="number" step="0.01" inputmode="decimal"></label>
           <label>Contracts<input id="qty" type="number" step="1" min="1" inputmode="numeric"></label>
@@ -336,8 +342,8 @@ const TIERS=[
   {max:1.50,label:'$0.50–1.49',act:40,trail:12},
   {max:3.00,label:'$1.50–2.99',act:30,trail:10},
   {max:Infinity,label:'$3.00 and up',act:25,trail:8}];
-const FIELDS=['tk','strike','exp','spot','bid','ask','entry','qty','ivOverride','atrD','atrW','stopPct','actPct','trailPct','stockPT','ptMode','ptTrail','fee'];
-let st={side:'call',levels:[],rulesTouched:false,example:true,showPct:false};
+const FIELDS=['tk','strike','exp','spot','bid','ask','lastPx','spreadEst','preMkt','entry','qty','ivOverride','atrD','atrW','stopPct','actPct','trailPct','stockPT','ptMode','ptTrail','fee'];
+let st={side:'call',levels:[],rulesTouched:false,example:true,showPct:false,closed:false,earn:false};
 
 /* ---------- time (all in New York wall-clock) ---------- */
 function etParts(){
@@ -354,6 +360,9 @@ function nextFriday(){
   const d=new Date(t);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
 }
 const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+/* most recent 4:00 PM close at or before now, and the next 9:30 open after now (weekdays; holidays not known) */
+function lastCloseWall(now){const p=etParts();let t=Date.UTC(p.y,p.m-1,p.d);for(let i=0;i<10;i++){const w=new Date(t).getUTCDay(),cw=t+16*36e5;if(w>0&&w<6&&cw<=now)return cw;t-=864e5;}return now;}
+function nextOpenWall(now){const p=etParts();let t=Date.UTC(p.y,p.m-1,p.d);for(let i=0;i<10;i++){const w=new Date(t).getUTCDay(),ow=t+9.5*36e5;if(w>0&&w<6&&ow>now)return ow;t+=864e5;}return now;}
 function closesUntil(exp,now){
   const out=[];const p=etParts();let t=Date.UTC(p.y,p.m-1,p.d);const e=Date.UTC(exp.y,exp.m-1,exp.d);
   for(let i=0;i<60&&t<=e;i++){const d=new Date(t),w=d.getUTCDay();
@@ -419,13 +428,14 @@ const tierFor=e=>TIERS.find(t=>e<t.max)||TIERS[TIERS.length-1];
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ---------- state ---------- */
-function save(){try{const o={side:st.side,levels:st.levels,rulesTouched:st.rulesTouched,example:st.example,showPct:st.showPct};
+function save(){try{const o={side:st.side,levels:st.levels,rulesTouched:st.rulesTouched,example:st.example,showPct:st.showPct,closed:st.closed,earn:st.earn};
   FIELDS.forEach(f=>o[f]=$(f).value);localStorage.setItem(KEY,JSON.stringify(o));}catch(e){}}
 function load(){try{const s=localStorage.getItem(KEY);return s?JSON.parse(s):null;}catch(e){return null;}}
 function apply(o){
   FIELDS.forEach(f=>{if(o[f]!=null)$(f).value=o[f];});
   st.side=o.side||'call';st.levels=Array.isArray(o.levels)?o.levels:[];st.rulesTouched=!!o.rulesTouched;
   st.example=!!o.example;st.showPct=!!o.showPct;$('showPct').checked=st.showPct;
+  st.closed=!!o.closed;st.earn=!!o.earn;
 }
 function example(){
   apply({tk:'MARA',side:'put',strike:'8.5',exp:nextFriday(),spot:'8.56',bid:'0.23',ask:'0.25',entry:'0.21',qty:'1',ivOverride:'',
@@ -473,17 +483,25 @@ function update(){
     g.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',cur!=null&&+b.dataset.v===cur));});
 
   // market
-  const mark=bid!=null&&ask!=null?(bid+ask)/2:(bid??ask);
-  const spread=bid!=null&&ask!=null?Math.max(ask-bid,0):null;
+  const closed=st.closed, lastPx=num('lastPx'), spreadEst=num('spreadEst'), preMkt=num('preMkt');
+  document.querySelectorAll('.closed-only').forEach(e=>e.hidden=!closed);
+  document.querySelectorAll('.live-only').forEach(e=>e.hidden=closed);
+  $('spotLbl').textContent=closed?'Stock at the close':'Stock now';
+  $('closedMode').checked=closed;$('earnFlag').checked=st.earn;
+  const mark=closed?lastPx:(bid!=null&&ask!=null?(bid+ask)/2:(bid??ask));
+  const spread=closed?spreadEst:(bid!=null&&ask!=null?Math.max(ask-bid,0):null);
   const expWall=exp?Date.UTC(exp.y,exp.m-1,exp.d,16,0):null;
   const daysLeft=expWall!=null?(expWall-now)/864e5:null;
   const T=daysLeft!=null?Math.max(daysLeft,0)/365:null;
   const ivO=num('ivOverride');
-  let iv=ivO?ivO/100:(S&&K&&T&&mark?solveIV(side,S,K,T,mark):null);
+  const Tsolve=closed&&expWall!=null?Math.max((expWall-lastCloseWall(now))/864e5,0)/365:T;
+  let iv=ivO?ivO/100:(S&&K&&Tsolve&&mark?solveIV(side,S,K,Tsolve,mark):null);
   const ivFromMid=!ivO;
 
   const meta=[];
-  if(mark!=null)meta.push('Mark <b>'+mark.toFixed(3).replace(/0$/,'')+'</b>');
+  if(mark!=null)meta.push((closed?'Last trade ':'Mark ')+'<b>'+mark.toFixed(3).replace(/0$/,'')+'</b>');
+  if(closed&&preMkt&&iv&&K&&expWall!=null){const To=Math.max((expWall-nextOpenWall(now))/864e5,0)/365;
+    meta.push('Est. at the open <b>'+bs(side,preMkt,K,To,iv).toFixed(2)+'</b> if '+tk+' opens '+preMkt.toFixed(2));}
   if(spread!=null)meta.push('Spread <b>'+spread.toFixed(2)+'</b>');
   if(daysLeft!=null)meta.push('Time left <b>'+(daysLeft>0?daysLeft.toFixed(1)+' days':'expired')+'</b>');
   meta.push('IV <b>'+(iv?Math.round(iv*100)+'%':'–')+'</b>'+(iv?(ivFromMid?' from mid':' manual'):''));
@@ -530,6 +548,9 @@ function update(){
   } else $('money').innerHTML='';
 
   // situational alerts
+  if(closed){alerts.push(['info','<b>Market-closed mode.</b> Values come from the last trade at the close, with IV backed out at the close. Check live quotes after about 9:45 before you send the ticket.']);
+    if(spreadEst==null)alerts.push(['warn','Enter a typical spread (yesterday\u2019s closing bid/ask width). Without it the spread check can\u2019t run.']);}
+  if(closed&&st.earn)alerts.push(['bad','<b>Earnings land before the next open.</b> IV usually drops right after the print, so these values are likely too high. Lower the IV box to roughly what next week\u2019s expiration shows, or wait until the print is out. A gap through your stop can\u2019t be stopped.']);
   if(daysLeft!=null&&daysLeft<=0)alerts.push(['bad','This expiration has passed. Pick the contract’s real expiration date.']);
   if(mark!=null&&act!=null&&mark>=act)alerts.push(['warn','The mark ('+f2(mark)+') is already at or past activation ('+f2(act)+'). The condition would fire the moment you send. Send the trail without a condition, or raise the activation.']);
   if(mark!=null&&stopPx!=null&&mark<=stopPx)alerts.push(['bad','The mark ('+f2(mark)+') is already at or under the stop ('+f2(stopPx)+'). The stop triggers as soon as you send.']);
@@ -570,7 +591,7 @@ function update(){
     '<div class="grouphead">Enter your entry price to build the ticket.</div>';
   $('ticketText').textContent=legs.length?(tk+' '+tag+' exp '+$('exp').value+' · OCO, every leg SELL '+q+', GTC\n'+legs.map((L,i)=>(i+1)+'. '+L.t+': '+L.code+'\n   '+L.h).join('\n')):'';
 
-  renderMap({side,K,S,iv,entry,act,floor,stopPx,stopPct,actPct,trailPct,exp,expWall,now,T,tk});
+  renderMap({side,K,S,iv,entry,act,floor,stopPx,stopPct,actPct,trailPct,exp,expWall,now,T,tk,closed,preMkt});
   save();
 }
 
@@ -637,7 +658,8 @@ function renderMap(c){
   const closes=closesUntil(c.exp,c.now).slice(0,12);
   const cols=[{h:'Now',sub:'',T:c.T}].concat(closes.map(x=>({h:x.isExp?'Exp':x.dow,sub:x.md+' close',T:Math.max((c.expWall-x.wall)/864e5,0)/365})));
   let rows=st.levels.map(L=>({l:L.label||'Level',p:parseFloat(L.price)})).filter(r=>isFinite(r.p));
-  rows.push({l:'Stock now',p:c.S,now:true});
+  rows.push({l:c.closed?'Stock at close':'Stock now',p:c.S,now:true});
+  if(c.closed&&c.preMkt)rows.push({l:'Pre-market',p:c.preMkt,now:true});
   const addLine=(px,label,kind)=>{if(px==null)return;const s=spotFor(c.side,c.K,c.T,c.iv,px);if(s!=null)rows.push({l:label,p:s,line:kind});};
   addLine(c.stopPx,'−'+c.stopPct+'% stop ('+f2(c.stopPx)+')','stop');
   addLine(c.act,'+'+c.actPct+'% activate ('+f2(c.act)+')','act');
@@ -664,6 +686,8 @@ document.querySelector('.main').addEventListener('input',e=>{
   st.example=false;update();
 });
 document.querySelector('.main').addEventListener('change',e=>{if(e.target.id==='ptMode'){st.example=false;update();}});
+$('closedMode').addEventListener('change',e=>{st.closed=e.target.checked;st.example=false;update();});
+$('earnFlag').addEventListener('change',e=>{st.earn=e.target.checked;update();});
 $('sideCall').addEventListener('click',()=>{st.side='call';st.example=false;update();});
 $('sidePut').addEventListener('click',()=>{st.side='put';st.example=false;update();});
 document.querySelectorAll('.pbtns').forEach(g=>g.addEventListener('click',e=>{
